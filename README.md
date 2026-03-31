@@ -101,3 +101,4 @@ The following categories contain real engineering problems. The description tell
 - **Backend:** NestJS, TypeORM, PostgreSQL, Socket.IO, JWT
 - **Frontend:** React 18, React Router v6, Socket.IO Client, Vite, TypeScript
 - **Infrastructure:** Docker, Docker Compose
+# gotech-hire-task
