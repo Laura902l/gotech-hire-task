@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-
-// FLAW: hardcoded URL (occurrence 3 of 4)
-const API_URL = 'http://localhost:3000';
+import { API_URL } from '../config';
 
 interface Props {
   onLogin: (token: string, userId: number) => void;
@@ -13,16 +11,20 @@ export default function RegisterPage({ onLogin }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // FLAW: no try/catch, no loading state
-    const res = await fetch(`${API_URL}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    const data = await res.json();
-    if (data.token) {
-      localStorage.setItem('token', data.token);
-      onLogin(data.token, data.userId);
+    try {
+      const res = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+        onLogin(data.token, data.userId);
+      }
+    } catch (err) {
+      console.error('Registration failed', err);
     }
   };
 

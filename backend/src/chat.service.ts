@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Room } from './entities/room.entity';
 import { Message } from './entities/message.entity';
 import { User } from './entities/user.entity';
@@ -16,6 +16,9 @@ export class ChatService {
     private userRepository: Repository<User>,
   ) {}
 
+  private readonly activeUsers: Map<number, Set<number>> = new Map();
+  private readonly logger = new Logger(ChatService.name);
+
   async getRooms(): Promise<any[]> {
     return this.roomRepository.find();
   }
@@ -29,23 +32,28 @@ export class ChatService {
     return this.roomRepository.save(room);
   }
 
-  // N+1 query problem: fetches user for each message separately
-  async getMessages(roomId: number): Promise<any[]> {
-    const messages = await this.messageRepository.find({
-      where: { room_id: roomId },
-      order: { createdAt: 'ASC' },
-    });
+  // N+1 query problem fixed: fetch messages and username in a single query
+  async getMessages(roomId: number, page = 1, limit = 100): Promise<any[]> {
+    const offset = (page - 1) * limit;
 
-    // N+1: one extra query per message
-    const result = [];
-    for (const msg of messages) {
-      const user = await this.userRepository.findOne({ where: { id: msg.user_id } });
-      result.push({
-        ...msg,
-        username: user ? user.username : 'unknown',
-      });
-    }
-    return result;
+    const rows = await this.messageRepository
+      .createQueryBuilder('m')
+      .leftJoinAndMapOne('m.user', User, 'u', 'u.id = m.user_id')
+      .where('m.room_id = :roomId', { roomId })
+      .orderBy('m."createdAt"', 'ASC')
+      .offset(offset)
+      .limit(limit)
+      .getMany();
+
+    return rows.map(r => ({
+      id: r.id,
+      room_id: r.room_id,
+      user_id: r.user_id,
+      content: (r as any).content,
+      senderName: (r as any).senderName,
+      createdAt: r.createdAt,
+      username: (r as any)['user'] ? (r as any)['user'].username : undefined,
+    }));
   }
 
   async saveMessage(room_id: number, user_id: number, content: string, senderName: string): Promise<any> {
@@ -62,17 +70,41 @@ export class ChatService {
     return this.userRepository.findOne({ where: { id } });
   }
 
+  async getUsersSafe(): Promise<any[]> {
+    return this.userRepository.find({ select: ['id', 'username', 'role', 'createdAt'] });
+  }
+
   // dead code - was going to implement but never finished
   async getActiveUsers(roomId: number): Promise<any[]> {
-    // TODO: track active users per room
-    return [];
+    const set = this.activeUsers.get(roomId);
+    if (!set || set.size === 0) return [];
+    const ids = Array.from(set.values());
+    const users = await this.userRepository.find({ where: { id: In(ids) }, select: ['id', 'username'] });
+    return users;
+  }
+
+  userJoined(roomId: number, userId: number) {
+    let set = this.activeUsers.get(roomId);
+    if (!set) {
+      set = new Set<number>();
+      this.activeUsers.set(roomId, set);
+    }
+    set.add(userId);
+    this.logger.debug(`User ${userId} joined room ${roomId}`);
+  }
+
+  userLeft(roomId: number, userId: number) {
+    const set = this.activeUsers.get(roomId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) this.activeUsers.delete(roomId);
+    this.logger.debug(`User ${userId} left room ${roomId}`);
   }
 
   async deleteMessage(messageId: number, userId: number): Promise<boolean> {
-    // TODO: add authorization check
     const msg = await this.messageRepository.findOne({ where: { id: messageId } });
     if (!msg) return false;
-    // if (msg.user_id !== userId) return false; // commented out - authorization skipped
+    if (msg.user_id !== userId) return false;
     await this.messageRepository.delete(messageId);
     return true;
   }

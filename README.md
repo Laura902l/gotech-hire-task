@@ -101,4 +101,26 @@ The following categories contain real engineering problems. The description tell
 - **Backend:** NestJS, TypeORM, PostgreSQL, Socket.IO, JWT
 - **Frontend:** React 18, React Router v6, Socket.IO Client, Vite, TypeScript
 - **Infrastructure:** Docker, Docker Compose
-# gotech-hire-task
+
+## Fixes made in this fork
+
+Ниже приведён краткий список ключевых правок
+
+- Security
+	- Пароли теперь хэшируются с помощью bcrypt (замена уязвимого хеша). Секреты JWT/REFRESH читаются из окружения (`.env`) вместо хардкода
+	- WebSocket-подключения и части API теперь проверяют и валидируют JWT: сервер не доверяет пользовательским полям из сообщений.
+	- Убран вывод паролей/хешей в API: `/users` возвращает только безопасные поля.
+
+- Performance
+	- Исправлена проблема N+1 при загрузке сообщений: теперь используется JOIN для получения username вместе с сообщениями и поддерживается пагинация (page, limit).
+	- Добавлены индексы на часто используемые колонки (`room_id`, `user_id`, `username`) для ускорения запросов.
+
+- Frontend reliability and security
+	- Централизован `API_URL` в `frontend/src/config.ts` - убраны жестко прописанные URL-адреса.
+	- Соединение Socket.IO создаётся и ресусируется корректно через useRef/useEffect (не пересоздаётся на каждом рендере).
+	- Убрано использование `dangerouslySetInnerHTML` в `MessageItem` — теперь контент рендерится как текст (закрыта XSS-уязвимость).
+	- Исправлена отправка сообщений: клиент не подставляет `userId`/`senderName` — сервер присваивает отправителя из токена.
+
+- Code quality and infra
+	- Заменены `console.log` на Nest `Logger`, добавлены ValidationPipe и базовые проверки CORS для production.
+	- Добавлен `env_file: .env` в `docker-compose.yml`, а также dependency `bcryptjs` в backend `package.json`.

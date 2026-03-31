@@ -5,8 +5,7 @@ import LoginPage from './components/LoginPage';
 import RegisterPage from './components/RegisterPage';
 import ChatPage from './components/ChatPage';
 
-// FLAW: hardcoded URL (occurrence 1 of 4)
-const API_URL = 'http://localhost:3000';
+import { API_URL } from './config';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
@@ -14,8 +13,19 @@ export default function App() {
     localStorage.getItem('userId') ? parseInt(localStorage.getItem('userId')!) : null
   );
 
-  // FLAW: socket created on every render, not in useRef
-  const socket = io('http://localhost:3000');
+  const socketRef = React.useRef<any>(null);
+  React.useEffect(() => {
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
+    socketRef.current = io(API_URL, { auth: { token } });
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, [token]);
+  const socket = socketRef.current;
 
   const handleLogin = (newToken: string, newUserId: number) => {
     localStorage.setItem('token', newToken);

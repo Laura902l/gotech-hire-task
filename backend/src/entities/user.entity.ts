@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
 
 @Entity('users')
 export class User {
@@ -6,7 +6,8 @@ export class User {
   id: number;
 
   @Column({ unique: true })
-  username: string; // should have @Index() for query performance
+  @Index()
+  username: string; // index added for query performance
 
   @Column()
   password: string; // should have @Exclude() to prevent accidental exposure
