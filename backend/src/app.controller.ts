@@ -36,14 +36,11 @@ export class AppController {
 
   @Post('auth/logout')
   async logout(@Body() body: { refreshToken?: string }) {
-    // Stateless implementation: instruct client to drop tokens.
-    // If refresh tokens are stored server-side, invalidate them here.
     return { ok: true };
   }
 
   @Get('users')
   async getUsers(@Headers('authorization') auth: string) {
-    // require a valid JWT to access user list and never return passwords
     if (!auth) throw new UnauthorizedException();
     const token = auth.replace('Bearer ', '');
     const decoded = this.authService.verifyToken(token);

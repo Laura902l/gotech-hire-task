@@ -14,11 +14,26 @@ export default function App() {
   );
 
   const socketRef = React.useRef<any>(null);
+console.log('TOKEN BEFORE SOCKET:', token);
   React.useEffect(() => {
+      if (!token) return;
+
     if (socketRef.current) {
       socketRef.current.disconnect();
     }
-    socketRef.current = io(API_URL, { auth: { token } });
+    socketRef.current = io(API_URL, {
+      auth: { token },
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      randomizationFactor: 0.5,
+    });
+    try {
+      (window as any).__socket = socketRef.current;
+      console.log('socket created', socketRef.current);
+    } catch (err) {
+    }
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();

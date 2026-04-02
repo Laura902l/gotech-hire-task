@@ -37,6 +37,7 @@ export default function ChatPage({ token, userId, socket, apiUrl, onLogout }: Pr
   const [username, setUsername] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   // use provided apiUrl prop
   // const HARDCODED_API = 'http://localhost:3000';
@@ -45,23 +46,72 @@ export default function ChatPage({ token, userId, socket, apiUrl, onLogout }: Pr
     fetchRooms();
     fetchCurrentUser();
 
+    let stopPolling = false;
+    let pollHandle: any = null;
+
+    const resolveSocket = (): any => {
+      return socket || (window as any).__socket || null;
+    };
+
+    const waitForSocket = async (timeout = 3000, interval = 200) => {
+      const start = Date.now();
+      while (!stopPolling && Date.now() - start < timeout) {
+        const s = resolveSocket();
+        if (s) return s;
+        await new Promise(r => (pollHandle = setTimeout(r, interval)));
+      }
+      return resolveSocket();
+    };
+
+    let attachedSocket: any = null;
     const onConnect = () => setIsConnected(true);
     const onDisconnect = () => setIsConnected(false);
-
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-
-    const onNewMessage = (message: any) => {
-      if (selectedRoom && message.room_id === selectedRoom.id) {
-        setMessages(prev => [...prev, message]);
-      }
+    const onConnectError = (err: any) => {
+      console.error('socket connect_error', err);
+      setSendError(err?.message || 'WebSocket connection error');
+      setTimeout(() => setSendError(null), 4000);
     };
-    socket.on('newMessage', onNewMessage);
+
+    (async () => {
+      const s = await waitForSocket();
+      if (!s) {
+        console.log('No socket available to attach listeners');
+        return;
+      }
+      attachedSocket = s;
+      try {
+        console.log('socket in ChatPage:', attachedSocket, 'connected=', attachedSocket?.connected);
+      } catch (err) {}
+      if (attachedSocket?.connected) setIsConnected(true);
+      console.log('token before socket:', token);
+      attachedSocket.on('connect', onConnect);
+      attachedSocket.on('disconnect', onDisconnect);
+      attachedSocket.on('connect_error', onConnectError);
+      attachedSocket.on('newMessage', (message: any) => {
+        if (selectedRoom && message.room_id === selectedRoom.id) {
+          setMessages((prev: any[]) => [...prev, message]);
+        }
+      });
+    })();
 
     return () => {
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
-      socket.off('newMessage', onNewMessage);
+      stopPolling = true;
+      if (pollHandle) clearTimeout(pollHandle);
+      try {
+        const s = attachedSocket || socket || (window as any).__socket;
+        if (s) {
+          s.off('connect', onConnect);
+          s.off('disconnect', onDisconnect);
+          s.off('newMessage', (message: any) => {
+            if (selectedRoom && message.room_id === selectedRoom.id) {
+              setMessages((prev: any[]) => [...prev, message]);
+            }
+          });
+          s.off('connect_error', onConnectError);
+        }
+      } catch (err) {
+        // ignore
+      }
     };
   }, [socket, selectedRoom]);
 
@@ -97,20 +147,41 @@ export default function ChatPage({ token, userId, socket, apiUrl, onLogout }: Pr
 
   const handleRoomSelect = (room: Room) => {
     if (selectedRoom) {
-      socket.emit('leaveRoom', { roomId: selectedRoom.id });
+      try {
+        const s = socket || (window as any).__socket;
+        s?.emit?.('leaveRoom', { roomId: selectedRoom.id });
+      } catch (err) {
+      }
     }
+
     setSelectedRoom(room);
-    socket.emit('joinRoom', { roomId: room.id });
+
+    try {
+      const s = socket || (window as any).__socket;
+      if (s?.emit) s.emit('joinRoom', { roomId: room.id });
+    } catch (err) {
+    }
+
     fetchMessages(room.id);
   };
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRoom) return;
 
-    socket.emit('sendMessage', {
-      roomId: selectedRoom.id,
-      content: newMessage,
-    });
+    try {
+      const s = socket || (window as any).__socket;
+      console.log('handleSendMessage: socket=', s, 'connected=', s?.connected, 'id=', s?.id);
+      if (!s) throw new Error('Socket not available');
+      s.emit('sendMessage', {
+        roomId: selectedRoom.id,
+        content: newMessage,
+      });
+    } catch (err: any) {
+      console.error('Failed to emit message', err);
+      setSendError('Failed to send message: ' + (err?.message || 'unknown'));
+      setTimeout(() => setSendError(null), 3000);
+      return;
+    }
 
     setNewMessage('');
   };
@@ -135,6 +206,11 @@ export default function ChatPage({ token, userId, socket, apiUrl, onLogout }: Pr
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      if (!isConnected) {
+        setSendError('Not connected — cannot send');
+        setTimeout(() => setSendError(null), 2000);
+        return;
+      }
       handleSendMessage();
     }
   };
@@ -249,11 +325,17 @@ export default function ChatPage({ token, userId, socket, apiUrl, onLogout }: Pr
               />
               <button
                 onClick={handleSendMessage}
-                style={{ padding: '8px 16px', fontSize: '16px', cursor: 'pointer' }}
+                style={{ padding: '8px 16px', fontSize: '16px', cursor: isConnected ? 'pointer' : 'not-allowed' }}
               >
                 Send
               </button>
             </div>
+            {sendError && (
+              <div style={{ padding: '6px 10px', color: '#a00', fontSize: '13px' }}>
+                {sendError}
+              </div>
+            )}
+          
           </>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>

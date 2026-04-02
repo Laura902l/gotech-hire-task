@@ -32,7 +32,6 @@ export class ChatService {
     return this.roomRepository.save(room);
   }
 
-  // N+1 query problem fixed: fetch messages and username in a single query
   async getMessages(roomId: number, page = 1, limit = 100): Promise<any[]> {
     const offset = (page - 1) * limit;
 
@@ -74,7 +73,6 @@ export class ChatService {
     return this.userRepository.find({ select: ['id', 'username', 'role', 'createdAt'] });
   }
 
-  // dead code - was going to implement but never finished
   async getActiveUsers(roomId: number): Promise<any[]> {
     const set = this.activeUsers.get(roomId);
     if (!set || set.size === 0) return [];

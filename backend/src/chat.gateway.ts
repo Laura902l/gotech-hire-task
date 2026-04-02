@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { AuthService } from './auth.service';
+import { Logger } from '@nestjs/common';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -17,21 +18,25 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server: Server;
 
   constructor(private chatService: ChatService, private authService: AuthService) {}
+  private readonly logger = new Logger(ChatGateway.name);
 
   handleConnection(client: Socket) {
     const token = (client.handshake && (client.handshake.auth as any)?.token) || null;
     if (!token) {
+      this.logger.warn(`Client ${client.id} connected without token; disconnecting`);
       client.disconnect();
       return;
     }
     const decoded: any = this.authService.verifyToken(token);
     if (!decoded) {
+      this.logger.warn(`Client ${client.id} provided invalid token; disconnecting`);
       client.disconnect();
       return;
     }
     (client as any).data = (client as any).data || {};
     (client as any).data.userId = decoded.userId;
     (client as any).data.username = decoded.username;
+    this.logger.debug(`Client ${client.id} authenticated as user ${decoded.userId}`);
   }
 
   handleDisconnect(client: Socket) {

@@ -6,7 +6,6 @@ import { AuthService } from './auth.service';
 export class ChatController {
   constructor(private chatService: ChatService, private authService: AuthService) {}
 
-  // No @UseGuards(JwtAuthGuard) - all routes unprotected
   @Get('rooms')
   async getRooms() {
     return this.chatService.getRooms();
